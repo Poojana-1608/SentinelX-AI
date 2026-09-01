@@ -1,9 +1,8 @@
-from transformers import pipeline
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-sentiment_model = pipeline(
-    "sentiment-analysis",
-    model="cardiffnlp/twitter-roberta-base-sentiment-latest"
-)
+
+# Lightweight NLP sentiment analyzer
+sentiment_analyzer = SentimentIntensityAnalyzer()
 
 
 def analyze_sentiment(articles):
@@ -16,72 +15,159 @@ def analyze_sentiment(articles):
 
     for article in articles:
 
+        title = article.get("title", "")
+        description = article.get("description", "")
+
         text = (
-            article.get("title", "")
+            title
             + ". "
-            + article.get("description", "")
+            + description
         ).strip()
 
         if not text:
             continue
 
         try:
-            result = sentiment_model(
-                text[:512],
-                truncation=True
-            )[0]
 
-            label = result["label"].lower()
-            confidence = round(result["score"] * 100, 2)
+            scores = sentiment_analyzer.polarity_scores(text)
 
-            if "positive" in label:
+            compound = scores["compound"]
+
+            # -----------------------------------------
+            # SENTIMENT CLASSIFICATION
+            # -----------------------------------------
+
+            if compound >= 0.05:
+
                 sentiment = "positive"
                 positive += 1
 
-            elif "negative" in label:
+            elif compound <= -0.05:
+
                 sentiment = "negative"
                 negative += 1
 
             else:
+
                 sentiment = "neutral"
                 neutral += 1
 
+            # -----------------------------------------
+            # CONFIDENCE
+            # -----------------------------------------
+
+            confidence = round(
+                max(
+                    scores["pos"],
+                    scores["neu"],
+                    scores["neg"]
+                ) * 100,
+                2
+            )
+
             analyzed_articles.append({
-                "title": article.get("title", ""),
-                "description": article.get("description", ""),
-                "source": article.get("source", ""),
-                "url": article.get("url", ""),
-                "publishedAt": article.get("publishedAt", ""),
+
+                "title": title,
+
+                "description": description,
+
+                "source": article.get(
+                    "source",
+                    ""
+                ),
+
+                "url": article.get(
+                    "url",
+                    ""
+                ),
+
+                "publishedAt": article.get(
+                    "publishedAt",
+                    ""
+                ),
+
                 "sentiment": sentiment,
+
                 "confidence": confidence
+
             })
 
         except Exception as e:
-            print("Sentiment Error:", e)
 
-    total = positive + neutral + negative
+            print(
+                "Sentiment Error:",
+                e
+            )
 
-    if total == 0:
-        return {
-            "positive": 0,
-            "neutral": 0,
-            "negative": 0,
-            "score": 0,
-            "articles": []
-        }
+    # ---------------------------------------------
+    # CALCULATE TOTAL
+    # ---------------------------------------------
 
-    positive_percent = round((positive / total) * 100)
-    neutral_percent = round((neutral / total) * 100)
-    negative_percent = round((negative / total) * 100)
-
-    score = round(
-        positive_percent + (neutral_percent * 0.5)
+    total = (
+        positive
+        + neutral
+        + negative
     )
 
+    if total == 0:
+
+        return {
+
+            "positive": 0,
+
+            "neutral": 0,
+
+            "negative": 0,
+
+            "score": 0,
+
+            "articles": []
+
+        }
+
+    # ---------------------------------------------
+    # PERCENTAGES
+    # ---------------------------------------------
+
+    positive_percent = round(
+        (positive / total) * 100
+    )
+
+    neutral_percent = round(
+        (neutral / total) * 100
+    )
+
+    negative_percent = round(
+        (negative / total) * 100
+    )
+
+    # ---------------------------------------------
+    # REPUTATION SCORE
+    #
+    # Positive = 100%
+    # Neutral  = 50%
+    # Negative = 0%
+    # ---------------------------------------------
+
+    score = round(
+        positive_percent
+        + (neutral_percent * 0.5)
+    )
+
+    # ---------------------------------------------
+    # RETURN RESULT
+    # ---------------------------------------------
+
     return {
+
         "positive": positive_percent,
+
         "neutral": neutral_percent,
+
         "negative": negative_percent,
+
         "score": score,
+
         "articles": analyzed_articles
+
     }
